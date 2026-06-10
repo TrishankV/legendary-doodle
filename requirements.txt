@@ -1,0 +1,21 @@
+
+# Langchain files 
+langchain
+langchain-core
+langchain-community
+
+# Api modls 
+langchain-openai
+langchain-azure-ai
+langchain-google-genai
+
+# Vector Databse 
+chromadb
+tiktoken 
+langchain-redis
+langchain-weaviate
+pydantic
+
+# redundant
+openai
+google-genai
