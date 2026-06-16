@@ -1,0 +1,17 @@
+{
+  "google": {
+    "api_key": "AIzaSyDESH8JiyByZ9xZloQ0F9aGItgUQVHX-3o"
+  },
+  "azure": {
+    "documentai": {
+      "endpoint": "https://pdftoepub2.cognitiveservices.azure.com/",
+      "key": "GIeKBmPG4K1lcayU3yIRRekCxaoaj7dWU9eiHe0nr7ovSlAvUknVJQQJ99CFACYeBjFXJ3w3AAALACOG3pEU"
+    },
+
+    "search_service": {
+      "endpoint": "https://joogle.search.windows.net",
+      "key": "PuqpVlc01qeD5GhMMhR9AulR1Z4k9WPYRt8VClAuEaAzSeDFLPGi"
+    } , 
+    "azstorage": ""
+  }
+}
