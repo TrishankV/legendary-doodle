@@ -14,4 +14,4 @@ storage_container_Names = {
 }
 
 rgname = "Trish"
-loc = "East US"
+loc = "eastus"

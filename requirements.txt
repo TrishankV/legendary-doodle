@@ -20,3 +20,13 @@ pydantic
 # redundant
 openai
 google-genai
+
+# azure 
+
+azure-storage-blob
+azure-ai-documentintelligence
+azure-identity
+azure-core
+
+# utils 
+tqdm 

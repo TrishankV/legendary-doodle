@@ -12,6 +12,15 @@
       "endpoint": "https://joogle.search.windows.net",
       "key": "PuqpVlc01qeD5GhMMhR9AulR1Z4k9WPYRt8VClAuEaAzSeDFLPGi"
     } , 
-    "azstorage": ""
+    "azstorage": {
+      "endpoint": "https://forepub12.blob.core.windows.net/" , 
+      "key" : "pHEFIZBKPELu80dBuIDEbJEt00mHVBtuarjvuGHhhl/BriIackUMuDyJxKEUjWy2cgwnIANqQBRA+AStVq+Nwg==" ,
+      "connection_string": "DefaultEndpointsProtocol=https;AccountName=forepub12;AccountKey=pHEFIZBKPELu80dBuIDEbJEt00mHVBtuarjvuGHhhl/BriIackUMuDyJxKEUjWy2cgwnIANqQBRA+AStVq+Nwg==;EndpointSuffix=core.windows.net" ,
+      "containers" : {
+        "input": "pdfsandepub" ,
+        "artefacts" : "artefacts"
+      }
+    }
+
   }
 }

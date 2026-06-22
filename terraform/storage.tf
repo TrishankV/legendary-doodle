@@ -6,6 +6,12 @@ resource "azurerm_storage_account" "epubstorage" {
     account_replication_type = "LRS"
     account_kind = "StorageV2"
     # tags = var.tags["storagetag"]
+    
+  network_rules {
+    default_action = "Allow"
+    bypass         = ["AzureServices"]
+  }
+
 
 }
 

@@ -1,70 +1,60 @@
 
-# Creating a serverless function app 
- # FUCK MICROSOFT 
-# resource "azurerm_service_plan" "function_app_plan" {
-#     name = "conversion-pipeline"
-#     resource_group_name = var.rgname
-#     location = "canadacentral"
-#     os_type = "Linux"
-#     sku_name = "Y1"
-# }
-
-# # creating a linux function app
-
-# resource "azurerm_linux_function_app" "piplinux" {
-#     name = "function-app-243232341"
-#     resource_group_name = var.rgname
-#     location = "canadacentral"
-#     tags = var.tags["aitag"]
-#     service_plan_id = azurerm_service_plan.function_app_plan.id
-
-#     storage_account_name = azurerm_storage_account.epubstorage.name
-#     storage_account_access_key = azurerm_storage_account.epubstorage.primary_access_key
-
-#     site_config {
-#     application_stack {
-#         python_version = "3.11"
-#     }
-#     }
-#     app_settings = {
-#         "DOC_AI_ENDPOINT" = azurerm_cognitive_account.res-0.endpoint
-#         "DOC_AI_KEY" = azurerm_cognitive_account.res-0.primary_access_key
-#         "AzureWebJobsStorage" = azurerm_storage_account.epubstorage.primary_connection_string
-#         "FUNCTIONS_WORKER_RUNTIME" = "python"
-#     }
-# }
-
-# Microsoft sint allowing app service on free tier so using logic apps instead 
-
-
-resource "azurerm_logic_app_workflow" "logicapp" { 
-    name = "fkmicrosoftlogicapp13"
-    location = var.loc
-    resource_group_name = var.rgname
-    tags = var.tags["aitag"]
-
-    parameters = {
-        "$connections" = jsonencode({
-            azureblob = {
-                connectionId = azurerm_api_connection.conn.id
-                connectionName = azurerm_api_connection.conn.name
-                id = azurerm_api_connection.conn.id
-                name = azurerm_api_connection.conn.managed_api_id
-            }
-        })
-    }
-
+resource "azurerm_api_connection" "conn" {
+  display_name        = "new_conn_a06e3"
+  managed_api_id      = "/subscriptions/dbc98806-131e-499d-b054-fbe202541a2d/providers/Microsoft.Web/locations/eastus/managedApis/azureblob"
+  name                = "azureblob"
+  parameter_values    = {}
+  resource_group_name = "Trish"
+  tags                = {}
 }
 
-resource "azurerm_api_connection" "conn" { 
-    name = "con-azurerblob-prod"
-    resource_group_name = var.rgname
-    # location = var.loc
-    display_name = "Blob storage Connection"
-
-    managed_api_id = "/subscriptions/${data.azurerm_subscription.current.subscription_id}/providers/Microsoft.Web/locations/${var.loc}/managedApis/azureblob"
-    parameter_values = {
-        accountName = azurerm_storage_account.epubstorage.name
-        accountKey = azurerm_storage_account.epubstorage.primary_access_key
+resource "azurerm_logic_app_workflow" "logicapp" {
+  enabled                            = true
+  location                           = "eastus"
+  name                               = "fkmicrosoftlogicapp13"
+  parameters = {
+    "$connections" = "{\"azureblob\":{\"connectionId\":\"/subscriptions/dbc98806-131e-499d-b054-fbe202541a2d/resourceGroups/Trish/providers/Microsoft.Web/connections/azureblob\",\"connectionName\":\"azureblob\",\"connectionProperties\":{},\"id\":\"/subscriptions/dbc98806-131e-499d-b054-fbe202541a2d/providers/Microsoft.Web/locations/eastus/managedApis/azureblob\"}}"
+  }
+  resource_group_name = "Trish"
+  tags = {
+    Name = "Artificial Intelligence FOudnary Services"
+  }
+  workflow_parameters = {
+    "$connections" = "{\"defaultValue\":{},\"type\":\"Object\"}"
+  }
+  workflow_schema  = "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#"
+  workflow_version = "1.0.0.0"
+  identity {
+    identity_ids = []
+    type         = "SystemAssigned"
+  }
+}
+resource "azurerm_logic_app_trigger_custom" "trrgr" {
+  body = jsonencode({
+    inputs = {
+      host = {
+        connection = {
+          name = "@parameters('$connections')['azureblob']['connectionId']"
+        }
+      }
+      method = "get"
+      path   = "/v2/datasets/@{encodeURIComponent(encodeURIComponent('AccountNameFromSettings'))}/triggers/batch/onupdatedfile"
+      queries = {
+        checkBothCreatedAndModifiedDateTime = false
+        folderId                            = "JTJmcGRmc2FuZGltYWdlcw=="
+        maxFileCount                        = 10
+      }
     }
+    metadata = {
+      "JTJmcGRmc2FuZGltYWdlcw==" = "/pdfsandimages"
+    }
+    recurrence = {
+      frequency = "Minute"
+      interval  = 3
+    }
+    splitOn = "@triggerBody()"
+    type    = "ApiConnection"
+  })
+  logic_app_id = azurerm_logic_app_workflow.logicapp.id
+  name         = "When_a_blob_is_added_or_modified_(properties_only)_(V2)"
 }
