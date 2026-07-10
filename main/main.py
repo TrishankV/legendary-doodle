@@ -5,7 +5,7 @@ from config import Config
 from pipeline import OCRPipeline
 import tqdm 
 
-logging.basicConfig(level=logging.INFO , format = "%(asctime)s - [%(levelname)s] - %(message)s"
+logging.basicConfig(level=logging.INFO , format = "%(asctime)s - [%(levelname)s] - %(message)s" )
 
 def main() :
     config = Config("configuration.json")
@@ -30,13 +30,13 @@ def main() :
     
     print()
     
-    with tqdm(total = 100 , desc =  "OCR Processing" , bar_format = "{desc}:{percentage:3.0f}|{bar}| [{elapsed} elapsed]") as pbar : 
+    with tqdm.tqdm(total = 100 , desc =  "OCR Processing" , bar_format = "{desc}:{percentage:3.0f}|{bar}| [{elapsed} elapsed]") as pbar : 
         def update_bar():
             if pbar.n <98 : 
                 increment = 2 if pbar.n < 80 else 0.5
                 pbar.update(increment)
                 
-        res = ocr_pipeline.process_document(filename_to_process , progress_callback = update_bar)
+        res = ocr_pipeline.process_doc(filename_to_process , progress_callback = update_bar)
         
         if res : 
             pbar.n = 100 
@@ -45,3 +45,4 @@ def main() :
             
 if __name__ == "__main__" : 
     main()
+

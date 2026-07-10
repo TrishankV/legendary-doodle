@@ -17,8 +17,8 @@
       "key" : "pHEFIZBKPELu80dBuIDEbJEt00mHVBtuarjvuGHhhl/BriIackUMuDyJxKEUjWy2cgwnIANqQBRA+AStVq+Nwg==" ,
       "connection_string": "DefaultEndpointsProtocol=https;AccountName=forepub12;AccountKey=pHEFIZBKPELu80dBuIDEbJEt00mHVBtuarjvuGHhhl/BriIackUMuDyJxKEUjWy2cgwnIANqQBRA+AStVq+Nwg==;EndpointSuffix=core.windows.net" ,
       "containers" : {
-        "input": "pdfsandepub" ,
-        "artefacts" : "artefacts"
+        "input": "pdfsandimages" ,
+        "artefacts" : "ocr-artifacts"
       }
     }
 

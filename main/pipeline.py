@@ -5,7 +5,7 @@ from config import Config
 from storage import BlobStorageManager
 from ocr import DocumentAIOCR
 
-logger = logger.getLogger("Orchestrator")
+logger = logger("Orchestrator")
 
 class OCRPipeline : 
     def __init__(self , config : Config):

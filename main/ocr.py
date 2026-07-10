@@ -1,6 +1,6 @@
 from azure.core.credentials import AzureKeyCredential as akc
 from azure.ai.documentintelligence import DocumentIntelligenceClient as docai 
-from azure.ai.documentintelligence import DocumentContentFormat as formatt 
+from azure.ai.documentintelligence.models import DocumentContentFormat as formatt 
 from utils import logger 
 
 logger = logger("OCRengine")
