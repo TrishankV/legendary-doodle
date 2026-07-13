@@ -1,17 +1,3 @@
-tags = {
-    aitag = {
-        Name = "Artificial Intelligence FOudnary Services" 
-    } , 
-    storagetag = {
-        Name = "Storage Services"
-    }
-}
+storage_buckets = ["pdfs-012", "artefacts-011245", "epubs-11324"]
 
-storage_container_Names = {
-    pdfs = "pdfsandimages"
-    ocr_artifacts = "ocr-artifacts"
-    epubs = "epubs"
-}
 
-rgname = "Trish"
-loc = "eastus"

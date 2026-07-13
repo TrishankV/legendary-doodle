@@ -1,42 +1,28 @@
-import logging 
-from azure.storage.blob import BlobServiceClient
-from azure.core.exceptions import ResourceNotFoundError 
-from config import Config
-from utils import logger
+from google.cloud import storage 
+import os 
 
-logger = logger("Storage")
+# Uploading 
 
-class BlobStorageManager : 
-    
-    def __init__(self, connection_string: str ) -> None :
-        self.blobclient = BlobServiceClient.from_connection_string(connection_string)
-        
-        # blob_client = self.blobclient.get_blob_client(container = container_anme , blob =  blob_name )
+def upload_pdf(bucket_name , pdf_path ) -> None :
+    client = storage.Client()
+    filename = os.path.basename(pdf_path)
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(filename)
+    blob.upload_from_filename(pdf_path)
+    print(f"Uploaded {pdf_path} to {bucket_name}.")
 
-    def ifblobexists(self, container_anme : str , blob_name : str ) -> bool : 
-        blob_client = self.blobclient.get_blob_client(container = container_anme , blob =  blob_name )
+# Checking 
 
-        try : 
-            blob_client.get_blob_properties()
-            return True 
-        except ResourceNotFoundError:
-            return False 
+def chek(bucket_name , pdf_path ) -> bool : 
+    client = storage.Client()
+    filename = os.path.basename(pdf_path)
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(filename)
+    return blob.exists()
 
-    def upload_local(self , container_name : str , local_file_path : str , blob_name : str ) -> None : 
-        logger.info(f"Uploading localfile into the '{blob_name}' in '{container_name}' ")
-        blob_client = self.blobclient.get_blob_client(container = container_name , blob =  blob_name )
-        with open(local_file_path, "rb") as f :
-            blob_client.upload_blob(f, overwrite = True )
-
-    def download_pdf_into_env(self, container_name : str , blob_name : str  ) -> bytes : 
-        logger.info(f"Downloading '{blob_name}' from '{container_name}' ")
-        blob_client = self.blobclient.get_blob_client(container = container_name , blob =  blob_name )
-        return blob_client.download_blob().readall()
-
-    def upload_artefact(self, container_name : str , blob_name : str , data : str ) -> None : 
-        logger.info(f"Uploading text artefact {blob_name} into {container_name}")
-        blob_client = self.blobclient.get_blob_client(container = container_name , blob =  blob_name )
-        blob_client.upload_blob(data, overwrite = True )
-
-
-
+# Test run 
+if __name__ == "__main__":
+    if chek("pdfs-012", "TESTING/wall of the world.pdf"):
+        print("File already exists in the bucket.")
+    else:
+        upload_pdf("pdfs-012", "TESTING/wall of the world.pdf")
