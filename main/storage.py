@@ -1,28 +1,54 @@
 from google.cloud import storage 
 import os 
+import hashlib 
+# Class to handle Google Cloud Storage operations 
 
-# Uploading 
+class StorageHandle : 
+    def __init__(self , bucket_name : str , pdf_path :str ) -> None :
+        self.client = storage.Client()
+        self.bucket_name = bucket_name
+        self.bucket = self.client.bucket(bucket_name)
+        self.pdf_path = pdf_path
+        self.filename = os.path.basename(pdf_path)
+        self.blob = self.bucket.blob(self.filename)
+            
+    def calc(self) -> str : 
+        self.sha256 = hashlib.sha256()
+        with open(self.pdf_path , "rb") as f :
+            while chunk := f.read(1024 * 1024) : 
+                self.sha256.update(chunk)
+        return self.sha256.hexdigest()
+    
+    def hashcheck(self) -> bool : 
+        blobs = list(self.bucket.list_blobs())
+        print(i.metadata for i in blobs)
+        # for i in blobs : 
+        #     if i.metadata.get("sha256") == self.pdf_hash : 
+        #         return "existing"
+        #     else : 
+        #         return "none"
 
-def upload_pdf(bucket_name , pdf_path ) -> None :
-    client = storage.Client()
-    filename = os.path.basename(pdf_path)
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(filename)
-    blob.upload_from_filename(pdf_path)
-    print(f"Uploaded {pdf_path} to {bucket_name}.")
-
-# Checking 
-
-def chek(bucket_name , pdf_path ) -> bool : 
-    client = storage.Client()
-    filename = os.path.basename(pdf_path)
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(filename)
-    return blob.exists()
+        
+    def upload_pdf(self) -> None :
+        self.pdf_hash = self.calc()
+        self.blob.metadata = { 
+                              "sha256": self.pdf_hash}
+        if self.blob.exists():
+            print(f"File {self.filename} already exists in the bucket {self.bucket_name}.")
+        else :
+            self.blob.upload_from_filename(self.pdfpath)
 
 # Test run 
+
 if __name__ == "__main__":
-    if chek("pdfs-012", "TESTING/wall of the world.pdf"):
-        print("File already exists in the bucket.")
-    else:
-        upload_pdf("pdfs-012", "TESTING/wall of the world.pdf")
+    s = StorageHandle(
+        bucket_name="pdfs-012",
+        pdf_path="TESTING/wall of the world.pdf"
+    )
+    s.upload_pdf()
+    
+    pdf_hash = s.calc()
+    print(f"Hash value of the file is : {pdf_hash}")
+    
+    existing_pdf = s.hashcheck()
+    print(existing_pdf)
