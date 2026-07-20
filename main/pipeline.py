@@ -2,7 +2,7 @@ from utils import logger
 import os
 from typing import Optional
 from config import Config 
-from storage import BlobStorageManager
+from main.storage.storage import BlobStorageManager
 from ocr import DocumentAIOCR
 
 logger = logger("Orchestrator")

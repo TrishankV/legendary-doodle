@@ -1,26 +1,32 @@
-{
-  "google": {
-    "api_key": "AIzaSyDESH8JiyByZ9xZloQ0F9aGItgUQVHX-3o"
-  },
-  "azure": {
-    "documentai": {
-      "endpoint": "https://pdftoepub2.cognitiveservices.azure.com/",
-      "key": "GIeKBmPG4K1lcayU3yIRRekCxaoaj7dWU9eiHe0nr7ovSlAvUknVJQQJ99CFACYeBjFXJ3w3AAALACOG3pEU"
-    },
+// {
+//   "google": {
+//     "api_key": "AIzaSyDESH8JiyByZ9xZloQ0F9aGItgUQVHX-3o"
+//   },
+//   "azure": {
+//     "documentai": {
+//       "endpoint": "https://pdftoepub2.cognitiveservices.azure.com/",
+//       "key": "GIeKBmPG4K1lcayU3yIRRekCxaoaj7dWU9eiHe0nr7ovSlAvUknVJQQJ99CFACYeBjFXJ3w3AAALACOG3pEU"
+//     },
 
-    "search_service": {
-      "endpoint": "https://joogle.search.windows.net",
-      "key": "PuqpVlc01qeD5GhMMhR9AulR1Z4k9WPYRt8VClAuEaAzSeDFLPGi"
-    } , 
-    "azstorage": {
-      "endpoint": "https://forepub12.blob.core.windows.net/" , 
-      "key" : "pHEFIZBKPELu80dBuIDEbJEt00mHVBtuarjvuGHhhl/BriIackUMuDyJxKEUjWy2cgwnIANqQBRA+AStVq+Nwg==" ,
-      "connection_string": "DefaultEndpointsProtocol=https;AccountName=forepub12;AccountKey=pHEFIZBKPELu80dBuIDEbJEt00mHVBtuarjvuGHhhl/BriIackUMuDyJxKEUjWy2cgwnIANqQBRA+AStVq+Nwg==;EndpointSuffix=core.windows.net" ,
-      "containers" : {
-        "input": "pdfsandimages" ,
-        "artefacts" : "ocr-artifacts"
-      }
-    }
+//     "search_service": {
+//       "endpoint": "https://joogle.search.windows.net",
+//       "key": "PuqpVlc01qeD5GhMMhR9AulR1Z4k9WPYRt8VClAuEaAzSeDFLPGi"
+//     } , 
+//     "azstorage": {
+//       "endpoint": "https://forepub12.blob.core.windows.net/" , 
+//       "key" : "pHEFIZBKPELu80dBuIDEbJEt00mHVBtuarjvuGHhhl/BriIackUMuDyJxKEUjWy2cgwnIANqQBRA+AStVq+Nwg==" ,
+//       "connection_string": "DefaultEndpointsProtocol=https;AccountName=forepub12;AccountKey=pHEFIZBKPELu80dBuIDEbJEt00mHVBtuarjvuGHhhl/BriIackUMuDyJxKEUjWy2cgwnIANqQBRA+AStVq+Nwg==;EndpointSuffix=core.windows.net" ,
+//       "containers" : {
+//         "input": "pdfsandimages" ,
+//         "artefacts" : "ocr-artifacts"
+//       }
+//     }
 
+//   }
+// }
+
+{ 
+  "Google": { 
+    
   }
 }
