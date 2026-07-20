@@ -1,36 +1,41 @@
-# # Langchain files 
-# langchain
-# langchain-core
-# langchain-community
+# Langchain files 
+langchain
+langchain-core
+langchain-community
 
-# # Api modls 
-# langchain-openai
-# langchain-azure-ai
-# langchain-google-genai
-# deepagents
+# Api modls 
+langchain-openai
+langchain-azure-ai
+langchain-google-genai
+deepagents
 
-# # Vector Databse 
-# chromadb
-# tiktoken 
-# langchain-redis
-# langchain-weaviate
-# pydantic
+# Vector Databse 
+chromadb
+tiktoken 
+langchain-redis
+langchain-weaviate
+pydantic
 
-# # redundant
-# openai
-# google-genai
+# redundant
+openai
+google-genai
 
-# # azure 
+# azure 
 
-# azure-storage-blob
-# azure-ai-documentintelligence
-# azure-identity
-# azure-core
+azure-storage-blob
+azure-ai-documentintelligence
+azure-identity
+azure-core
 
-# # utils 
-# tqdm 
+# utils 
+tqdm 
 
 # Google Cloud 
 google-cloud 
 google-auth
 google-cloud-storage
+
+# pdf 
+
+pymupdf 
+pillow
