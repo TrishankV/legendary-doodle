@@ -13,7 +13,7 @@ class DocumentAIOCR :
         logger.info("Submitting pdf to Azure Document Ai engine ... ")
         poller = self.client.begin_analyze_document(
             model_id="prebuilt-layout" , 
-            analyze_request = document_bytes ,
+            body = document_bytes ,
             content_type= "application/pdf" , 
             output_content_format= formatt.MARKDOWN
         )

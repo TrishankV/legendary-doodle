@@ -36,7 +36,7 @@ def main() :
                 increment = 2 if pbar.n < 80 else 0.5
                 pbar.update(increment)
                 
-        res = ocr_pipeline.process_doc(filename_to_process , progress_callback = update_bar)
+        res = ocr_pipeline.process_doc(filename_to_process)
         
         if res : 
             pbar.n = 100 

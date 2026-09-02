@@ -4,8 +4,8 @@
   },
   "azure": {
     "documentai": {
-      "endpoint": "https://pdftoepub2.cognitiveservices.azure.com/",
-      "key": "GIeKBmPG4K1lcayU3yIRRekCxaoaj7dWU9eiHe0nr7ovSlAvUknVJQQJ99CFACYeBjFXJ3w3AAALACOG3pEU"
+      "endpoint": "https://pdf2epub2.cognitiveservices.azure.com/",
+      "key": "3i95ZUaL12WRGBRq30VifFJuUwjynZ7r6shxNqhZKczfrDd2P81iJQQJ99CIACYeBjFXJ3w3AAALACOGeRii"
     },
 
     "search_service": {
@@ -13,9 +13,9 @@
       "key": "PuqpVlc01qeD5GhMMhR9AulR1Z4k9WPYRt8VClAuEaAzSeDFLPGi"
     } , 
     "azstorage": {
-      "endpoint": "https://forepub12.blob.core.windows.net/" , 
-      "key" : "pHEFIZBKPELu80dBuIDEbJEt00mHVBtuarjvuGHhhl/BriIackUMuDyJxKEUjWy2cgwnIANqQBRA+AStVq+Nwg==" ,
-      "connection_string": "DefaultEndpointsProtocol=https;AccountName=forepub12;AccountKey=pHEFIZBKPELu80dBuIDEbJEt00mHVBtuarjvuGHhhl/BriIackUMuDyJxKEUjWy2cgwnIANqQBRA+AStVq+Nwg==;EndpointSuffix=core.windows.net" ,
+      "endpoint": "https://forepub123.blob.core.windows.net/" , 
+      "key" : "tfMXnHinwpM6OXXn+BcRQD9I6Fp2M4pFkJouCNxUD6uu11VilzE3O4/yeg/s44SiLkAeQ4UXD79c+AStSmJMBw==" ,
+      "connection_string": "DefaultEndpointsProtocol=https;AccountName=forepub123;AccountKey=tfMXnHinwpM6OXXn+BcRQD9I6Fp2M4pFkJouCNxUD6uu11VilzE3O4/yeg/s44SiLkAeQ4UXD79c+AStSmJMBw==;EndpointSuffix=core.windows.net" ,
       "containers" : {
         "input": "pdfsandimages" ,
         "artefacts" : "ocr-artifacts"
