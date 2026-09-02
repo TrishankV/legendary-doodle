@@ -91,7 +91,7 @@ def document_to_dict(document: Document) -> dict:
         ]
     }
 
-def save_json(document: Document, output_path: str| Path) -> None:
+def save_json(document: Document, output_path: str| Path):
     output_path = Path(output_path)
     data = document_to_dict(document)
     output_path.parent.mkdir(
