@@ -16,6 +16,8 @@ def classify_block(text:str) -> str :
         return "heading"
     if strip_text.startswith("<table") or strip_text.startswith("|") : 
         return "table"
+    if strip_text.startswith("<!--") and strip_text.endswith("-->") :
+        return "metadata"
     return "paragraph"
 
 # Heading in the markdown 
