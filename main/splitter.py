@@ -1,8 +1,9 @@
-import argparse
+from __future__ import annotations
+
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Sequence
 
 
 REGIONS = (
@@ -12,68 +13,62 @@ REGIONS = (
     "back_matter",
 )
 
+UNKNOWN = "unknown"
 
-class RegionClassifier(Protocol):
+# ---------------------------------------------------------------------------
+# AI interface
+# ---------------------------------------------------------------------------
+
+
+class BoundaryClassifier(Protocol):
     """
-    Provider-neutral interface.
+    Provider-neutral interface for resolving uncertain document boundaries.
 
-    Any AI provider can be used as long as it implements:
-
-        classify(pages) -> result
-
-    Expected result:
+    The classifier receives a small amount of context around a candidate
+    boundary and returns:
 
         {
-            "region": "...",
+            "decision": "boundary" | "no_boundary",
+            "transition": "front_matter_to_contents"
+                         | "contents_to_main_content"
+                         | "main_content_to_back_matter"
+                         | "none",
             "confidence": 0.0,
             "reason": "..."
         }
-
-    The implementation can use:
-        Gemini
-        OpenAI
-        Ollama
-        Qwen
-        Claude
-        local transformers
-        anything else
     """
 
-    def classify(
+    def classify_boundary(
         self,
-        pages: List[dict],
+        before_pages: List[dict],
+        after_pages: List[dict],
+        expected_transition: str,
     ) -> Any:
         ...
 
 
-# ============================================================
-# TEXT HELPERS
-# ============================================================
+# ---------------------------------------------------------------------------
+# Text helpers
+# ---------------------------------------------------------------------------
 
-def normalize_text(
-    text: str,
-) -> str:
+
+def normalize_text(text: str) -> str:
     """
-    Normalize text for comparisons only.
+    Normalize text for structural comparisons only.
 
-    Original source text is never modified.
+    The original source text is never modified.
     """
+    text = str(text or "")
+    text = text.replace("\u00a0", " ")
 
-    text = str(
-        text or ""
-    )
-
-    text = text.replace(
-        "\u00a0",
-        " ",
-    )
-
+    # Remove markdown heading markers.
     text = re.sub(
         r"^#{1,6}\s*",
         "",
         text.strip(),
     )
 
+    # Normalize whitespace.
     text = re.sub(
         r"\s+",
         " ",
@@ -83,108 +78,82 @@ def normalize_text(
     return text.strip().lower()
 
 
-def block_text(
-    block: dict,
-) -> str:
-    return str(
-        block.get(
-            "text",
-            "",
-        )
-    )
+def block_text(block: dict) -> str:
+    return str(block.get("text", "") or "")
 
 
-def page_text(
-    page: dict,
-) -> str:
+def page_text(page: dict) -> str:
     return "\n".join(
         block_text(block)
-        for block in page.get(
-            "blocks",
-            [],
-        )
+        for block in page.get("blocks", [])
     )
 
 
-def is_heading(
-    block: dict,
-) -> bool:
+def is_heading(block: dict) -> bool:
     return (
-        block.get(
-            "block_type"
-        ) == "heading"
-        or block.get(
-            "markdown_level"
-        ) is not None
+        block.get("block_type") == "heading"
+        or block.get("markdown_level") is not None
     )
 
 
-def heading_text(
-    block: dict,
-) -> str:
+def heading_text(block: dict) -> str:
     return normalize_text(
         block_text(block)
     )
 
 
-# ============================================================
-# GENERIC STRUCTURAL SIGNALS
-# ============================================================
+def compact_text(text: str, max_chars: int = 1000) -> str:
+    """
+    Compact text before sending it to an AI provider.
 
-def looks_like_contents_heading(
-    text: str,
-) -> bool:
+    This prevents accidental token explosions when a page contains a very
+    large paragraph, table, or OCR artifact.
+    """
+    text = str(text or "").strip()
 
-    text = normalize_text(
-        text
-    )
+    if len(text) <= max_chars:
+        return text
+
+    return text[:max_chars] + "\n[TRUNCATED]"
+
+
+# ---------------------------------------------------------------------------
+# Structural signals
+# ---------------------------------------------------------------------------
+
+
+def looks_like_contents_heading(text: str) -> bool:
+    text = normalize_text(text)
 
     return text in {
         "contents",
         "table of contents",
         "contents page",
         "table contents",
+        "contents and index",
     }
 
 
-def looks_like_main_content_heading(
-    text: str,
-) -> bool:
-
-    text = normalize_text(
-        text
-    )
+def looks_like_main_content_heading(text: str) -> bool:
+    text = normalize_text(text)
 
     patterns = (
-        r"^book\s+(?:[ivxlcdm]+|\d+)"
-        r"(?:\s*[-–—:].*)?$",
-
-        r"^part\s+(?:[ivxlcdm]+|\d+)"
-        r"(?:\s*[-–—:].*)?$",
-
-        r"^chapter\s+(?:[ivxlcdm]+|\d+)"
-        r"(?:\s*[-–—:].*)?$",
-
-        r"^section\s+(?:[ivxlcdm]+|\d+)"
-        r"(?:\s*[-–—:].*)?$",
+        r"^book\s+(?:[ivxlcdm]+|\d+)(?:\s*[-–—:].*)?$",
+        r"^part\s+(?:[ivxlcdm]+|\d+)(?:\s*[-–—:].*)?$",
+        r"^chapter\s+(?:[ivxlcdm]+|\d+)(?:\s*[-–—:].*)?$",
+        r"^section\s+(?:[ivxlcdm]+|\d+)(?:\s*[-–—:].*)?$",
+        r"^prologue$",
+        r"^introduction$",
     )
 
     return any(
-        re.match(
-            pattern,
-            text,
-        )
+        re.match(pattern, text)
         for pattern in patterns
     )
 
 
-def looks_like_back_matter_heading(
-    text: str,
-) -> bool:
-
-    text = normalize_text(
-        text
-    )
+def looks_like_back_matter_heading(text: str) -> bool:
+    text = normalize_text(text)
 
     return text in {
         "appendix",
@@ -200,18 +169,18 @@ def looks_like_back_matter_heading(
         "afterword",
         "postscript",
         "about the author",
+        "about the author",
         "author's note",
         "authors note",
+        "publisher's note",
+        "publishers note",
+        "advertisements",
+        "advertisements",
     }
 
 
-def looks_like_end_marker(
-    text: str,
-) -> bool:
-
-    text = normalize_text(
-        text
-    )
+def looks_like_end_marker(text: str) -> bool:
+    text = normalize_text(text)
 
     return text in {
         "the end",
@@ -220,32 +189,83 @@ def looks_like_end_marker(
     }
 
 
-# ============================================================
-# ITERATION
-# ============================================================
+# ---------------------------------------------------------------------------
+# Contents heuristics
+# ---------------------------------------------------------------------------
 
-def iter_blocks(
-    document: dict,
-):
-    """
-    Iterate through all document blocks
-    in source order.
-    """
 
+def looks_like_toc_entry(text: str) -> bool:
+    """
+    Detect common table-of-contents entries.
+
+    This is deliberately conservative. It is evidence, not a final decision.
+    """
+    text = str(text or "").strip()
+
+    if not text:
+        return False
+
+    patterns = (
+        # Chapter I ........ 12
+        r"^(?:chapter|part|book|section)\s+.+\.{2,}\s*\d+\s*$",
+
+        # Chapter I    12
+        r"^(?:chapter|part|book|section)\s+.+\s{2,}\d+\s*$",
+
+        # I. Something ........ 12
+        r"^[ivxlcdm]+\.\s+.+\.{2,}\s*\d+\s*$",
+
+        # 1. Something ........ 12
+        r"^\d+\.\s+.+\.{2,}\s*\d+\s*$",
+    )
+
+    return any(
+        re.match(pattern, text, flags=re.IGNORECASE)
+        for pattern in patterns
+    )
+
+
+def page_has_contents_signals(page: dict) -> bool:
+    """
+    Return True when a page contains strong TOC evidence.
+    """
+    blocks = page.get("blocks", [])
+
+    heading_found = False
+    entry_count = 0
+
+    for block in blocks:
+        text = block_text(block).strip()
+
+        if is_heading(block) and looks_like_contents_heading(text):
+            heading_found = True
+
+        if looks_like_toc_entry(text):
+            entry_count += 1
+
+    # A contents heading is strong evidence by itself.
+    if heading_found:
+        return True
+
+    # Multiple TOC-looking entries are stronger than a single accidental one.
+    return entry_count >= 2
+
+
+# ---------------------------------------------------------------------------
+# Document iteration
+# ---------------------------------------------------------------------------
+
+
+def iter_blocks(document: dict):
+    """
+    Iterate over all blocks in source order.
+    """
     for page_index, page in enumerate(
-        document.get(
-            "pages",
-            [],
-        )
+        document.get("pages", [])
     ):
-
         for block_index, block in enumerate(
-            page.get(
-                "blocks",
-                [],
-            )
+            page.get("blocks", [])
         ):
-
             yield (
                 page_index,
                 block_index,
@@ -253,9 +273,10 @@ def iter_blocks(
             )
 
 
-# ============================================================
-# STRUCTURAL ANCHORS
-# ============================================================
+# ---------------------------------------------------------------------------
+# Structural anchors
+# ---------------------------------------------------------------------------
+
 
 def make_anchor(
     document: dict,
@@ -264,27 +285,16 @@ def make_anchor(
     block: dict,
     kind: str,
 ) -> dict:
-
-    page = document[
-        "pages"
-    ][page_index]
+    page = document["pages"][page_index]
 
     return {
         "kind": kind,
         "page_index": page_index,
         "block_index": block_index,
-        "source_page": page.get(
-            "source_page"
-        ),
-        "block_id": block.get(
-            "id"
-        ),
-        "text": heading_text(
-            block
-        ),
-        "markdown_level": block.get(
-            "markdown_level"
-        ),
+        "source_page": page.get("source_page"),
+        "block_id": block.get("id"),
+        "text": heading_text(block),
+        "markdown_level": block.get("markdown_level"),
     }
 
 
@@ -294,13 +304,10 @@ def find_structural_anchors(
     """
     Find possible structural signals.
 
-    Multiple candidates are preserved.
-
-    We do NOT assume that the first matching heading
-    is necessarily the correct boundary.
+    Multiple candidates are preserved. No candidate is blindly treated as
+    authoritative.
     """
-
-    anchors = {
+    anchors: Dict[str, List[dict]] = {
         "contents": [],
         "main_content": [],
         "back_matter": [],
@@ -311,26 +318,15 @@ def find_structural_anchors(
         page_index,
         block_index,
         block,
-    ) in iter_blocks(
-        document
-    ):
+    ) in iter_blocks(document):
 
-        if not is_heading(
-            block
-        ):
+        if not is_heading(block):
             continue
 
-        text = heading_text(
-            block
-        )
+        text = heading_text(block)
 
-        if looks_like_contents_heading(
-            text
-        ):
-
-            anchors[
-                "contents"
-            ].append(
+        if looks_like_contents_heading(text):
+            anchors["contents"].append(
                 make_anchor(
                     document,
                     page_index,
@@ -340,13 +336,8 @@ def find_structural_anchors(
                 )
             )
 
-        if looks_like_main_content_heading(
-            text
-        ):
-
-            anchors[
-                "main_content"
-            ].append(
+        if looks_like_main_content_heading(text):
+            anchors["main_content"].append(
                 make_anchor(
                     document,
                     page_index,
@@ -356,13 +347,8 @@ def find_structural_anchors(
                 )
             )
 
-        if looks_like_back_matter_heading(
-            text
-        ):
-
-            anchors[
-                "back_matter"
-            ].append(
+        if looks_like_back_matter_heading(text):
+            anchors["back_matter"].append(
                 make_anchor(
                     document,
                     page_index,
@@ -372,13 +358,8 @@ def find_structural_anchors(
                 )
             )
 
-        if looks_like_end_marker(
-            text
-        ):
-
-            anchors[
-                "end"
-            ].append(
+        if looks_like_end_marker(text):
+            anchors["end"].append(
                 make_anchor(
                     document,
                     page_index,
@@ -391,154 +372,417 @@ def find_structural_anchors(
     return anchors
 
 
-# ============================================================
-# PAGE WINDOWS
-# ============================================================
+# ---------------------------------------------------------------------------
+# Page evidence
+# ---------------------------------------------------------------------------
 
-def create_page_windows(
-    document: dict,
-    window_size: int = 5,
-    overlap: int = 2,
-) -> List[List[dict]]:
+
+def page_signal_score(page: dict) -> Dict[str, float]:
     """
-    Create overlapping page windows.
+    Produce cheap deterministic evidence for a page.
+
+    This does NOT assign the final region. It merely estimates which regions
+    the page resembles.
+    """
+    scores = {
+        "front_matter": 0.0,
+        "contents": 0.0,
+        "main_content": 0.0,
+        "back_matter": 0.0,
+    }
+
+    blocks = page.get("blocks", [])
+
+    if not blocks:
+        return scores
+
+    texts = [
+        block_text(block).strip()
+        for block in blocks
+        if block_text(block).strip()
+    ]
+
+    normalized = [
+        normalize_text(text)
+        for text in texts
+    ]
+
+    # Contents evidence.
+    if any(
+        looks_like_contents_heading(text)
+        for text in normalized
+    ):
+        scores["contents"] += 10.0
+
+    toc_entries = sum(
+        1
+        for text in texts
+        if looks_like_toc_entry(text)
+    )
+
+    scores["contents"] += min(
+        toc_entries * 2.0,
+        8.0,
+    )
+
+    # Main-content evidence.
+    for block in blocks:
+        if not is_heading(block):
+            continue
+
+        text = heading_text(block)
+
+        if looks_like_main_content_heading(text):
+            scores["main_content"] += 8.0
+
+    # Back-matter evidence.
+    for block in blocks:
+        if not is_heading(block):
+            continue
+
+        text = heading_text(block)
+
+        if looks_like_back_matter_heading(text):
+            scores["back_matter"] += 10.0
+
+        if looks_like_end_marker(text):
+            scores["back_matter"] += 6.0
+
+    # Front matter evidence is intentionally weaker. Anything before the
+    # primary content can be front matter, but we do not want to misclassify
+    # arbitrary pages simply because they appear early.
+    for text in normalized:
+        if text in {
+            "title page",
+            "copyright",
+            "copyright page",
+            "dedication",
+            "dedications",
+            "preface",
+            "foreword",
+            "acknowledgements",
+            "acknowledgments",
+        }:
+            scores["front_matter"] += 7.0
+
+    return scores
+
+
+def page_has_strong_signal(page: dict) -> bool:
+    scores = page_signal_score(page)
+
+    return max(scores.values(), default=0.0) >= 8.0
+
+
+# ---------------------------------------------------------------------------
+# Boundary candidates
+# ---------------------------------------------------------------------------
+
+
+BOUNDARY_TRANSITIONS = (
+    "front_matter_to_contents",
+    "contents_to_main_content",
+    "main_content_to_back_matter",
+)
+
+
+def make_boundary_candidate(
+    page_index: int,
+    source_page: int,
+    transition: str,
+    score: float,
+    reason: str,
+) -> dict:
+    return {
+        "page_index": page_index,
+        "source_page": source_page,
+        "transition": transition,
+        "score": round(score, 3),
+        "reason": reason,
+    }
+
+
+def detect_boundary_candidates(
+    document: dict,
+    anchors: Dict[str, List[dict]],
+) -> List[dict]:
+    """
+    Generate likely boundary locations without using AI.
+
+    The returned page index represents the FIRST page of the region AFTER
+    the boundary.
 
     Example:
 
-        pages 1-5
-        pages 4-8
-        pages 7-11
+        contents_to_main_content at page_index=14
 
-    Overlap gives the classifier context around boundaries.
+    means page 14 is the first page believed to belong to main_content.
     """
-
-    pages = document.get(
-        "pages",
-        [],
-    )
+    pages = document.get("pages", [])
 
     if not pages:
         return []
 
-    if window_size <= 0:
-        raise ValueError(
-            "window_size must be greater than zero."
+    candidates: List[dict] = []
+
+    contents_pages = {
+        anchor.get("page_index")
+        for anchor in anchors["contents"]
+    }
+
+    main_pages = {
+        anchor.get("page_index")
+        for anchor in anchors["main_content"]
+    }
+
+    back_pages = {
+        anchor.get("page_index")
+        for anchor in anchors["back_matter"]
+    }
+
+    end_pages = {
+        anchor.get("page_index")
+        for anchor in anchors["end"]
+    }
+
+    # -----------------------------------------------------------------------
+    # Contents -> Main
+    # -----------------------------------------------------------------------
+
+    for page_index in sorted(main_pages):
+        if page_index <= 0:
+            continue
+
+        source_page = pages[page_index].get(
+            "source_page",
+            page_index + 1,
         )
 
-    if overlap < 0:
-        raise ValueError(
-            "overlap cannot be negative."
+        candidates.append(
+            make_boundary_candidate(
+                page_index=page_index,
+                source_page=source_page,
+                transition="contents_to_main_content",
+                score=10.0,
+                reason="main-content heading detected",
+            )
         )
 
-    if overlap >= window_size:
-        raise ValueError(
-            "overlap must be smaller than window_size."
+    # If a contents section exists, look for the first page after the last
+    # strong TOC page.
+    if contents_pages:
+        last_contents_page = max(contents_pages)
+
+        for page_index in range(
+            last_contents_page + 1,
+            min(
+                len(pages),
+                last_contents_page + 6,
+            ),
+        ):
+            if page_index in main_pages:
+                continue
+
+            if page_has_strong_signal(
+                pages[page_index]
+            ):
+                continue
+
+            scores = page_signal_score(
+                pages[page_index]
+            )
+
+            if scores["main_content"] > scores["contents"]:
+                candidates.append(
+                    make_boundary_candidate(
+                        page_index=page_index,
+                        source_page=pages[page_index].get(
+                            "source_page",
+                            page_index + 1,
+                        ),
+                        transition="contents_to_main_content",
+                        score=5.0,
+                        reason=(
+                            "post-contents page resembles main content"
+                        ),
+                    )
+                )
+                break
+
+    # -----------------------------------------------------------------------
+    # Main -> Back
+    # -----------------------------------------------------------------------
+
+    for page_index in sorted(back_pages):
+        source_page = pages[page_index].get(
+            "source_page",
+            page_index + 1,
         )
 
-    step = (
-        window_size
-        - overlap
+        candidates.append(
+            make_boundary_candidate(
+                page_index=page_index,
+                source_page=source_page,
+                transition="main_content_to_back_matter",
+                score=10.0,
+                reason="back-matter heading detected",
+            )
+        )
+
+    for page_index in sorted(end_pages):
+        next_index = page_index + 1
+
+        if next_index >= len(pages):
+            continue
+
+        source_page = pages[next_index].get(
+            "source_page",
+            next_index + 1,
+        )
+
+        candidates.append(
+            make_boundary_candidate(
+                page_index=next_index,
+                source_page=source_page,
+                transition="main_content_to_back_matter",
+                score=8.0,
+                reason="page follows end marker",
+            )
+        )
+
+    # -----------------------------------------------------------------------
+    # Front -> Contents
+    # -----------------------------------------------------------------------
+
+    for page_index in sorted(contents_pages):
+        source_page = pages[page_index].get(
+            "source_page",
+            page_index + 1,
+        )
+
+        candidates.append(
+            make_boundary_candidate(
+                page_index=page_index,
+                source_page=source_page,
+                transition="front_matter_to_contents",
+                score=10.0,
+                reason="contents heading detected",
+            )
+        )
+
+    return candidates
+
+
+def group_boundary_candidates(
+    candidates: Sequence[dict],
+) -> Dict[str, List[dict]]:
+    grouped: Dict[str, List[dict]] = {
+        transition: []
+        for transition in BOUNDARY_TRANSITIONS
+    }
+
+    for candidate in candidates:
+        transition = candidate.get("transition")
+
+        if transition not in grouped:
+            continue
+
+        grouped[transition].append(candidate)
+
+    for transition in grouped:
+        grouped[transition].sort(
+            key=lambda item: (
+                -float(item.get("score", 0.0)),
+                int(item.get("page_index", 0)),
+            )
+        )
+
+    return grouped
+
+
+# ---------------------------------------------------------------------------
+# Boundary context
+# ---------------------------------------------------------------------------
+
+
+def make_context_pages(
+    pages: List[dict],
+    boundary_index: int,
+    context_size: int = 2,
+) -> tuple[List[dict], List[dict]]:
+    """
+    Return pages immediately before and after a candidate boundary.
+    """
+    context_size = max(
+        1,
+        context_size,
     )
 
-    windows = []
+    before_start = max(
+        0,
+        boundary_index - context_size,
+    )
 
-    start = 0
+    after_end = min(
+        len(pages),
+        boundary_index + context_size,
+    )
 
-    while start < len(pages):
+    before_pages = pages[
+        before_start:boundary_index
+    ]
 
-        window = pages[
-            start:start + window_size
-        ]
+    after_pages = pages[
+        boundary_index:after_end
+    ]
 
-        if not window:
-            break
-
-        windows.append(
-            window
-        )
-
-        if (
-            start
-            + window_size
-            >= len(pages)
-        ):
-            break
-
-        start += step
-
-    return windows
+    return (
+        before_pages,
+        after_pages,
+    )
 
 
-# ============================================================
-# AI RESULT HELPERS
-# ============================================================
+# ---------------------------------------------------------------------------
+# AI boundary resolution
+# ---------------------------------------------------------------------------
 
-def extract_region(
+
+def extract_value(
     result: Any,
-) -> Optional[str]:
-
+    key: str,
+    default: Any = None,
+) -> Any:
     if result is None:
-        return None
+        return default
 
-    if isinstance(
+    if isinstance(result, dict):
+        return result.get(
+            key,
+            default,
+        )
+
+    return getattr(
         result,
-        dict,
-    ):
-
-        region = result.get(
-            "region"
-        )
-
-    else:
-
-        region = getattr(
-            result,
-            "region",
-            None,
-        )
-
-    if region not in REGIONS:
-        return None
-
-    return region
+        key,
+        default,
+    )
 
 
 def extract_confidence(
     result: Any,
 ) -> float:
-
-    if result is None:
-        return 0.0
-
-    if isinstance(
+    value = extract_value(
         result,
-        dict,
-    ):
-
-        value = result.get(
-            "confidence",
-            0.0,
-        )
-
-    else:
-
-        value = getattr(
-            result,
-            "confidence",
-            0.0,
-        )
+        "confidence",
+        0.0,
+    )
 
     try:
-
-        value = float(
-            value
-        )
-
+        value = float(value)
     except (
         TypeError,
         ValueError,
     ):
-
         value = 0.0
 
     return max(
@@ -550,445 +794,380 @@ def extract_confidence(
     )
 
 
-def extract_reason(
-    result: Any,
+def normalize_ai_transition(
+    value: Any,
 ) -> str:
+    value = str(value or "").strip()
 
-    if result is None:
-        return ""
+    if value in BOUNDARY_TRANSITIONS:
+        return value
 
-    if isinstance(
-        result,
-        dict,
-    ):
+    if value == "none":
+        return "none"
 
-        return str(
-            result.get(
-                "reason",
-                "",
-            )
+    return "none"
+
+
+def normalize_ai_decision(
+    value: Any,
+) -> str:
+    value = str(value or "").strip().lower()
+
+    if value in {
+        "boundary",
+        "yes",
+        "true",
+    }:
+        return "boundary"
+
+    return "no_boundary"
+
+
+def resolve_boundary_with_ai(
+    ai_agent: BoundaryClassifier,
+    document: dict,
+    candidate: dict,
+    context_size: int = 2,
+) -> dict:
+    """
+    Ask AI about ONE candidate boundary.
+
+    This is intentionally much narrower than classifying an entire document.
+    """
+    pages = document.get("pages", [])
+
+    boundary_index = int(
+        candidate["page_index"]
+    )
+
+    before_pages, after_pages = make_context_pages(
+        pages,
+        boundary_index,
+        context_size=context_size,
+    )
+
+    transition = candidate["transition"]
+
+    try:
+        raw_result = ai_agent.classify_boundary(
+            before_pages=before_pages,
+            after_pages=after_pages,
+            expected_transition=transition,
         )
 
-    return str(
-        getattr(
-            result,
+    except Exception as exc:
+        return {
+            **candidate,
+            "ai": {
+                "enabled": True,
+                "decision": "no_boundary",
+                "transition": "none",
+                "confidence": 0.0,
+                "reason": f"AI error: {exc}",
+            },
+            "accepted": False,
+        }
+
+    decision = normalize_ai_decision(
+        extract_value(
+            raw_result,
+            "decision",
+            "no_boundary",
+        )
+    )
+
+    ai_transition = normalize_ai_transition(
+        extract_value(
+            raw_result,
+            "transition",
+            "none",
+        )
+    )
+
+    confidence = extract_confidence(
+        raw_result
+    )
+
+    reason = str(
+        extract_value(
+            raw_result,
             "reason",
             "",
         )
+        or ""
     )
 
-
-# ============================================================
-# AI CLASSIFICATION
-# ============================================================
-
-def classify_window(
-    ai_agent: RegionClassifier,
-    pages: List[dict],
-) -> Optional[dict]:
-    """
-    Call the injected AI classifier.
-
-    The splitter has no knowledge of the provider.
-    """
-
-    result = ai_agent.classify(
-        pages
+    accepted = (
+        decision == "boundary"
+        and ai_transition == transition
+        and confidence >= 0.65
     )
-
-    region = extract_region(
-        result
-    )
-
-    if region is None:
-        return None
 
     return {
-        "region": region,
-        "confidence": extract_confidence(
-            result
-        ),
-        "reason": extract_reason(
-            result
-        ),
+        **candidate,
+        "ai": {
+            "enabled": True,
+            "decision": decision,
+            "transition": ai_transition,
+            "confidence": confidence,
+            "reason": reason,
+        },
+        "accepted": accepted,
     }
 
 
-def classify_pages_with_ai(
-    document: dict,
-    ai_agent: RegionClassifier,
-    window_size: int = 5,
-    overlap: int = 2,
-) -> Dict[int, List[dict]]:
-    """
-    Classify overlapping page windows.
-
-    Each page may receive multiple predictions.
-    """
-
-    windows = create_page_windows(
-        document=document,
-        window_size=window_size,
-        overlap=overlap,
-    )
-
-    predictions: Dict[
-        int,
-        List[dict],
-    ] = {}
-
-    total = len(
-        windows
-    )
-
-    for (
-        window_number,
-        pages,
-    ) in enumerate(
-        windows,
-        start=1,
-    ):
-
-        first_page = pages[
-            0
-        ].get(
-            "source_page"
-        )
-
-        last_page = pages[
-            -1
-        ].get(
-            "source_page"
-        )
-
-        print(
-            f"AI window "
-            f"{window_number}/{total}: "
-            f"pages "
-            f"{first_page}-"
-            f"{last_page}"
-        )
-
-        try:
-
-            result = classify_window(
-                ai_agent,
-                pages,
-            )
-
-        except Exception as exc:
-
-            print(
-                f"  AI error: {exc}"
-            )
-
-            continue
-
-        if result is None:
-
-            print(
-                "  Invalid AI result."
-            )
-
-            continue
-
-        print(
-            f"  -> "
-            f"{result['region']} "
-            f"("
-            f"{result['confidence']:.2f}"
-            f")"
-        )
-
-        for page in pages:
-
-            source_page = page.get(
-                "source_page"
-            )
-
-            predictions.setdefault(
-                source_page,
-                [],
-            ).append(
-                {
-                    **result,
-                    "window_start": first_page,
-                    "window_end": last_page,
-                }
-            )
-
-    return predictions
+# ---------------------------------------------------------------------------
+# Deterministic boundary selection
+# ---------------------------------------------------------------------------
 
 
-# ============================================================
-# RECONCILIATION
-# ============================================================
-
-def choose_region(
-    predictions: List[dict],
-) -> str:
-    """
-    Confidence-weighted vote among overlapping
-    AI predictions.
-    """
-
-    if not predictions:
-        return "main_content"
-
-    scores = {
-        region: 0.0
-        for region in REGIONS
-    }
-
-    for prediction in predictions:
-
-        region = prediction.get(
-            "region"
-        )
-
-        if region not in scores:
-            continue
-
-        confidence = float(
-            prediction.get(
-                "confidence",
-                0.0,
-            )
-        )
-
-        scores[
-            region
-        ] += max(
-            0.0,
-            confidence,
-        )
+def choose_best_candidate(
+    candidates: List[dict],
+) -> Optional[dict]:
+    if not candidates:
+        return None
 
     return max(
-        scores,
-        key=scores.get,
+        candidates,
+        key=lambda item: (
+            float(item.get("score", 0.0)),
+            -int(item.get("page_index", 0)),
+        ),
     )
 
 
-def deterministic_region(
-    source_page: int,
-    anchors: Dict[str, List[dict]],
-) -> str:
-    """
-    Fallback when no AI prediction exists.
-    """
-
-    contents = [
-        item["source_page"]
-        for item in anchors[
-            "contents"
-        ]
-    ]
-
-    main = [
-        item["source_page"]
-        for item in anchors[
-            "main_content"
-        ]
-    ]
-
-    back = [
-        item["source_page"]
-        for item in anchors[
-            "back_matter"
-        ]
-    ]
-
-    ends = [
-        item["source_page"]
-        for item in anchors[
-            "end"
-        ]
-    ]
-
-    contents_start = (
-        min(contents)
-        if contents
-        else None
-    )
-
-    main_start = (
-        min(main)
-        if main
-        else None
-    )
-
-    back_start = (
-        min(back)
-        if back
-        else None
-    )
-
-    end_page = (
-        min(ends)
-        if ends
-        else None
-    )
-
-    if (
-        contents_start is not None
-        and source_page < contents_start
-    ):
-
-        return "front_matter"
-
-    if (
-        contents_start is not None
-        and main_start is not None
-        and contents_start
-        <= source_page
-        < main_start
-    ):
-
-        return "contents"
-
-    if (
-        back_start is not None
-        and source_page >= back_start
-    ):
-
-        return "back_matter"
-
-    if (
-        end_page is not None
-        and source_page > end_page
-    ):
-
-        return "back_matter"
-
-    if (
-        main_start is not None
-        and source_page >= main_start
-    ):
-
-        return "main_content"
-
-    return "main_content"
-
-
-def reconcile_page_regions(
+def resolve_boundary(
     document: dict,
-    predictions: Dict[int, List[dict]],
-) -> Dict[int, str]:
+    transition: str,
+    candidates: List[dict],
+    ai_agent: Optional[BoundaryClassifier],
+    ai_score_threshold: float = 7.0,
+    ai_context_size: int = 2,
+) -> Optional[dict]:
     """
-    Produce exactly one region assignment per page.
-    """
+    Resolve one transition.
 
-    anchors = find_structural_anchors(
-        document
+    Strong deterministic candidates are accepted directly.
+
+    Only ambiguous candidates are sent to AI.
+    """
+    if not candidates:
+        return None
+
+    ranked = sorted(
+        candidates,
+        key=lambda item: (
+            -float(item.get("score", 0.0)),
+            int(item.get("page_index", 0)),
+        ),
     )
 
-    result = {}
+    best = ranked[0]
 
-    for page in document.get(
-        "pages",
-        [],
+    # Very strong deterministic evidence.
+    if (
+        float(best.get("score", 0.0))
+        >= ai_score_threshold
     ):
+        return {
+            **best,
+            "resolution": "deterministic",
+            "accepted": True,
+        }
 
-        source_page = page.get(
-            "source_page"
+    # No AI available.
+    if ai_agent is None:
+        return {
+            **best,
+            "resolution": "deterministic",
+            "accepted": True,
+        }
+
+    # Only send a small number of ambiguous candidates to AI.
+    # This prevents the AI from becoming the default classifier.
+    for candidate in ranked[:3]:
+        resolved = resolve_boundary_with_ai(
+            ai_agent=ai_agent,
+            document=document,
+            candidate=candidate,
+            context_size=ai_context_size,
         )
 
-        page_predictions = predictions.get(
-            source_page,
-            [],
-        )
+        if resolved.get("accepted"):
+            resolved["resolution"] = "ai"
+            return resolved
 
-        if page_predictions:
+    return None
 
+
+# ---------------------------------------------------------------------------
+# Boundary ordering / monotonicity
+# ---------------------------------------------------------------------------
+
+
+def enforce_boundary_order(
+    document: dict,
+    boundaries: Dict[str, Optional[dict]],
+) -> Dict[str, Optional[dict]]:
+    """
+    Enforce:
+
+        front_matter
+            ↓
+        contents
+            ↓
+        main_content
+            ↓
+        back_matter
+
+    A later boundary can never occur before an earlier one.
+    """
+    result = dict(boundaries)
+
+    front = result.get(
+        "front_matter_to_contents"
+    )
+
+    contents = result.get(
+        "contents_to_main_content"
+    )
+
+    back = result.get(
+        "main_content_to_back_matter"
+    )
+
+    if front and contents:
+        if (
+            int(contents["page_index"])
+            <= int(front["page_index"])
+        ):
             result[
-                source_page
-            ] = choose_region(
-                page_predictions
-            )
+                "contents_to_main_content"
+            ] = None
 
-        else:
+    contents = result.get(
+        "contents_to_main_content"
+    )
 
+    if contents and back:
+        if (
+            int(back["page_index"])
+            <= int(contents["page_index"])
+        ):
             result[
-                source_page
-            ] = deterministic_region(
-                source_page,
-                anchors,
-            )
+                "main_content_to_back_matter"
+            ] = None
+
+    front = result.get(
+        "front_matter_to_contents"
+    )
+
+    back = result.get(
+        "main_content_to_back_matter"
+    )
+
+    if front and back:
+        if (
+            int(back["page_index"])
+            <= int(front["page_index"])
+        ):
+            result[
+                "main_content_to_back_matter"
+            ] = None
 
     return result
 
 
-def smooth_page_regions(
-    page_regions: Dict[int, str],
+# ---------------------------------------------------------------------------
+# Region assignment
+# ---------------------------------------------------------------------------
+
+
+def assign_regions_from_boundaries(
+    document: dict,
+    boundaries: Dict[str, Optional[dict]],
 ) -> Dict[int, str]:
     """
-    Remove isolated A-B-A classification spikes.
+    Convert ordered boundaries into exactly one region per page.
 
-    This is intentionally conservative.
+    Region sequence is always monotonic:
+
+        front_matter -> contents -> main_content -> back_matter
     """
+    pages = document.get("pages", [])
 
-    pages = sorted(
-        page_regions
+    front_boundary = boundaries.get(
+        "front_matter_to_contents"
     )
 
-    result = dict(
-        page_regions
+    contents_boundary = boundaries.get(
+        "contents_to_main_content"
     )
 
-    if len(pages) < 3:
-        return result
+    back_boundary = boundaries.get(
+        "main_content_to_back_matter"
+    )
 
-    for index in range(
-        1,
-        len(pages) - 1,
-    ):
+    front_index = (
+        int(front_boundary["page_index"])
+        if front_boundary
+        else None
+    )
 
-        previous_page = pages[
-            index - 1
-        ]
+    contents_index = (
+        int(contents_boundary["page_index"])
+        if contents_boundary
+        else None
+    )
 
-        current_page = pages[
-            index
-        ]
+    back_index = (
+        int(back_boundary["page_index"])
+        if back_boundary
+        else None
+    )
 
-        next_page = pages[
-            index + 1
-        ]
+    result: Dict[int, str] = {}
 
-        previous_region = result[
-            previous_page
-        ]
-
-        current_region = result[
-            current_page
-        ]
-
-        next_region = result[
-            next_page
-        ]
+    for page_index, page in enumerate(pages):
+        source_page = page.get(
+            "source_page",
+            page_index + 1,
+        )
 
         if (
-            previous_region
-            == next_region
-            and current_region
-            != previous_region
+            front_index is not None
+            and page_index < front_index
         ):
+            region = "front_matter"
 
-            result[
-                current_page
-            ] = previous_region
+        elif (
+            contents_index is not None
+            and page_index < contents_index
+        ):
+            region = "contents"
+
+        elif (
+            back_index is not None
+            and page_index >= back_index
+        ):
+            region = "back_matter"
+
+        else:
+            region = "main_content"
+
+        result[source_page] = region
 
     return result
 
 
-# ============================================================
-# REGION ASSEMBLY
-# ============================================================
+# ---------------------------------------------------------------------------
+# Region assembly
+# ---------------------------------------------------------------------------
+
 
 def create_empty_regions(
     source_file: str,
 ) -> Dict[str, dict]:
-
     return {
         region: {
             "source_file": source_file,
@@ -1004,9 +1183,8 @@ def add_page_to_region(
     page: dict,
 ) -> None:
     """
-    Preserve the original page and all its blocks.
+    Preserve the original page and all blocks.
     """
-
     region["pages"].append(
         {
             "source_page": page.get(
@@ -1023,77 +1201,102 @@ def add_page_to_region(
     )
 
 
-# ============================================================
-# PUBLIC API
-# ============================================================
+# ---------------------------------------------------------------------------
+# Main public API
+# ---------------------------------------------------------------------------
+
 
 def split_document(
     document: dict,
-    ai_agent: Optional[
-        RegionClassifier
-    ] = None,
+    ai_agent: Optional[BoundaryClassifier] = None,
     use_ai: bool = True,
-    window_size: int = 5,
-    overlap: int = 2,
+    ai_score_threshold: float = 7.0,
+    ai_context_size: int = 2,
 ) -> dict:
     """
     Split a parsed document into broad semantic regions.
 
-    AI is optional and injected.
+    Strategy:
 
-    This function has no dependency on a concrete AI provider.
+        1. Find deterministic structural anchors.
+        2. Generate boundary candidates.
+        3. Accept strong deterministic boundaries immediately.
+        4. Ask AI only about weak/ambiguous candidates.
+        5. Enforce monotonic region ordering.
+        6. Assign every page exactly once.
+
+    This replaces the previous "classify every overlapping page window"
+    strategy.
     """
-
-    source_file = document.get(
-        "source_file",
-        "",
+    source_file = str(
+        document.get(
+            "source_file",
+            "",
+        )
     )
 
     regions = create_empty_regions(
         source_file
     )
 
+    pages = document.get(
+        "pages",
+        [],
+    )
+
     anchors = find_structural_anchors(
         document
     )
 
-    page_predictions = {}
-
-    if (
-        use_ai
-        and ai_agent is not None
-    ):
-
-        page_predictions = (
-            classify_pages_with_ai(
-                document=document,
-                ai_agent=ai_agent,
-                window_size=window_size,
-                overlap=overlap,
-            )
-        )
-
-    page_regions = (
-        reconcile_page_regions(
-            document=document,
-            predictions=page_predictions,
-        )
+    candidates = detect_boundary_candidates(
+        document=document,
+        anchors=anchors,
     )
 
-    if (
+    grouped = group_boundary_candidates(
+        candidates
+    )
+
+    boundaries: Dict[
+        str,
+        Optional[dict],
+    ] = {
+        transition: None
+        for transition in BOUNDARY_TRANSITIONS
+    }
+
+    ai_enabled = bool(
         use_ai
         and ai_agent is not None
-    ):
+    )
 
-        page_regions = smooth_page_regions(
-            page_regions
+    for transition in BOUNDARY_TRANSITIONS:
+        transition_candidates = grouped.get(
+            transition,
+            [],
         )
 
-    for page in document.get(
-        "pages",
-        [],
-    ):
+        boundaries[transition] = resolve_boundary(
+            document=document,
+            transition=transition,
+            candidates=transition_candidates,
+            ai_agent=ai_agent if ai_enabled else None,
+            ai_score_threshold=ai_score_threshold,
+            ai_context_size=ai_context_size,
+        )
 
+    boundaries = enforce_boundary_order(
+        document=document,
+        boundaries=boundaries,
+    )
+
+    page_regions = assign_regions_from_boundaries(
+        document=document,
+        boundaries=boundaries,
+    )
+
+    # Assemble final regions.
+    for page in pages:
         source_page = page.get(
             "source_page"
         )
@@ -1104,9 +1307,7 @@ def split_document(
         )
 
         add_page_to_region(
-            regions[
-                region_name
-            ],
+            regions[region_name],
             page,
         )
 
@@ -1114,33 +1315,31 @@ def split_document(
         "source_file": source_file,
         "regions": regions,
         "anchors": anchors,
+        "boundary_candidates": candidates,
+        "boundaries": boundaries,
         "page_regions": page_regions,
         "ai": {
-            "enabled": bool(
-                use_ai
-                and ai_agent is not None
-            ),
+            "enabled": ai_enabled,
             "provider": (
-                type(
-                    ai_agent
-                ).__name__
+                type(ai_agent).__name__
                 if ai_agent is not None
                 else None
             ),
-            "window_size": window_size,
-            "overlap": overlap,
+            "strategy": "deterministic_first_boundary_resolution",
+            "ai_score_threshold": ai_score_threshold,
+            "ai_context_size": ai_context_size,
         },
     }
 
 
-# ============================================================
-# FILE HELPERS
-# ============================================================
+# ---------------------------------------------------------------------------
+# File helpers
+# ---------------------------------------------------------------------------
+
 
 def load_document(
     input_path: str | Path,
 ) -> dict:
-
     input_path = Path(
         input_path
     )
@@ -1150,18 +1349,23 @@ def load_document(
             f"File not found: {input_path}"
         )
 
-    return json.loads(
-        input_path.read_text(
-            encoding="utf-8"
+    try:
+        return json.loads(
+            input_path.read_text(
+                encoding="utf-8"
+            )
         )
-    )
+
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Invalid JSON: {input_path}"
+        ) from exc
 
 
 def save_split(
     split_data: dict,
     output_path: str | Path,
 ) -> None:
-
     output_path = Path(
         output_path
     )
@@ -1181,14 +1385,14 @@ def save_split(
     )
 
 
-# ============================================================
-# SUMMARY
-# ============================================================
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+
 
 def count_blocks(
     region: dict,
 ) -> int:
-
     return sum(
         len(
             page.get(
@@ -1206,152 +1410,98 @@ def count_blocks(
 def print_summary(
     split_data: dict,
 ) -> None:
-
     print()
     print(
-        f"Source: "
-        f"{split_data['source_file']}"
+        f"Source: {split_data['source_file']}"
     )
 
     print()
-    print(
-        "Structural candidates:"
+    print("Boundaries:")
+
+    boundaries = split_data.get(
+        "boundaries",
+        {},
     )
 
-    anchors = split_data[
-        "anchors"
-    ]
+    for transition in BOUNDARY_TRANSITIONS:
+        boundary = boundaries.get(
+            transition
+        )
 
-    for name in (
-        "contents",
-        "main_content",
-        "back_matter",
-        "end",
-    ):
-
-        candidates = anchors[
-            name
-        ]
-
-        if not candidates:
-
+        if not boundary:
             print(
-                f"  {name:15}: NONE"
+                f"  {transition:35}: NONE"
             )
-
             continue
 
-        preview = candidates[
-            :3
-        ]
-
-        values = "; ".join(
-            (
-                f"page={item['source_page']} "
-                f"block={item['block_id']} "
-                f"text={item['text']!r}"
-            )
-            for item in preview
-        )
-
-        if len(candidates) > 3:
-
-            values += (
-                f" ... +"
-                f"{len(candidates) - 3}"
-                f" more"
-            )
-
         print(
-            f"  {name:15}: "
-            f"{values}"
+            f"  {transition:35}: "
+            f"page={boundary.get('source_page')} "
+            f"resolution={boundary.get('resolution')}"
         )
 
     print()
-    print(
-        "AI:"
+    print("Regions:")
+
+    regions = split_data.get(
+        "regions",
+        {},
     )
 
-    ai = split_data[
-        "ai"
-    ]
+    for region_name in REGIONS:
+        region = regions.get(
+            region_name,
+            {},
+        )
 
-    print(
-        f"  enabled: "
-        f"{ai['enabled']}"
-    )
-
-    print(
-        f"  provider: "
-        f"{ai['provider']}"
-    )
-
-    print(
-        f"  window_size: "
-        f"{ai['window_size']}"
-    )
-
-    print(
-        f"  overlap: "
-        f"{ai['overlap']}"
-    )
-
-    print()
-    print(
-        "Final regions:"
-    )
-
-    for (
-        region_name,
-        region,
-    ) in split_data[
-        "regions"
-    ].items():
-
-        pages = region[
-            "pages"
-        ]
+        page_count = len(
+            region.get(
+                "pages",
+                [],
+            )
+        )
 
         block_count = count_blocks(
             region
         )
 
-        if pages:
+        print(
+            f"  {region_name:15}: "
+            f"{page_count:5} pages, "
+            f"{block_count:6} blocks"
+        )
 
-            source_pages = [
-                page[
-                    "source_page"
-                ]
-                for page in pages
-            ]
+    print()
+    print(
+        f"AI enabled: "
+        f"{split_data['ai']['enabled']}"
+    )
 
-            page_range = (
-                f"{min(source_pages)}-"
-                f"{max(source_pages)}"
-            )
-
-        else:
-
-            page_range = "empty"
+    if split_data["ai"]["enabled"]:
+        print(
+            f"AI provider: "
+            f"{split_data['ai']['provider']}"
+        )
 
         print(
-            f"  {region_name:15} "
-            f"pages={len(pages):3} "
-            f"blocks={block_count:4} "
-            f"source_pages={page_range}"
+            "AI strategy: "
+            f"{split_data['ai']['strategy']}"
         )
 
 
-# ============================================================
+# ---------------------------------------------------------------------------
 # CLI
-# ============================================================
+# ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
+
+def main() -> None:
+    import argparse
 
     parser = argparse.ArgumentParser(
         description=(
-            "Split parsed Document AI Markdown "
-            "into broad semantic regions."
+            "Split parsed Document AI JSON into "
+            "front matter, contents, main content, "
+            "and back matter."
         )
     )
 
@@ -1365,15 +1515,32 @@ if __name__ == "__main__":
         "-o",
         "--output",
         default="split.json",
-        help="Output split JSON.",
+        help="Path to output split JSON.",
     )
 
     parser.add_argument(
         "--no-ai",
         action="store_true",
+        help="Disable AI boundary resolution.",
+    )
+
+    parser.add_argument(
+        "--ai-score-threshold",
+        type=float,
+        default=7.0,
         help=(
-            "Disable AI and use deterministic "
-            "fallback classification."
+            "Deterministic candidate score at which "
+            "AI is skipped."
+        ),
+    )
+
+    parser.add_argument(
+        "--ai-context-size",
+        type=int,
+        default=2,
+        help=(
+            "Number of pages on each side of an "
+            "ambiguous boundary sent to AI."
         ),
     )
 
@@ -1383,14 +1550,26 @@ if __name__ == "__main__":
         args.input
     )
 
-    # The command-line interface intentionally does not
-    # instantiate any particular AI provider.
-    #
-    # Provider-specific code belongs outside this module.
+    ai_agent = None
+
+    if not args.no_ai:
+        try:
+            from .region_agent import GeminiBoundaryAgent
+
+            ai_agent = GeminiBoundaryAgent()
+
+        except ImportError:
+            print(
+                "Warning: AI agent could not be imported. "
+                "Continuing without AI."
+            )
+
     result = split_document(
         document=document,
-        ai_agent=None,
-        use_ai=True,
+        ai_agent=ai_agent,
+        use_ai=not args.no_ai,
+        ai_score_threshold=args.ai_score_threshold,
+        ai_context_size=args.ai_context_size,
     )
 
     save_split(
@@ -1402,6 +1581,11 @@ if __name__ == "__main__":
         result
     )
 
+    print()
     print(
-        f"\nOutput: {args.output}"
+        f"Split document saved to: {args.output}"
     )
+
+
+if __name__ == "__main__":
+    main()
