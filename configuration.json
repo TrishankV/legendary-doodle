@@ -1,9 +1,9 @@
 {
   "google": {
-    "api_key": "AQI"
+    "api_key": ""
   },
   "azure": {
-    "documentai": {
+    "documentai": { 
       "endpoint": "https://pdf2epub2.cognitiveservices.azure.com/",
       "key": "3i95ZUaL12WRGBRq30VifFJuUwjynZ7r6shxNqhZKczfrDd2P81iJQQJ99CIACYeBjFXJ3w3AAALACOGeRii"
     },
